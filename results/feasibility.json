@@ -1,0 +1,14 @@
+{
+ "limits": {
+  "T_interface_max_C": 450.0,
+  "T_surface_max_C": 1300.0
+ },
+ "n_test": 60,
+ "feasible_in_test": 13,
+ "correct": 60,
+ "false_feasible": 0,
+ "false_infeasible": 0,
+ "flagged_uncertain": 0,
+ "wrong_among_sure": 0,
+ "feasible_fraction_all_300": 0.21
+}

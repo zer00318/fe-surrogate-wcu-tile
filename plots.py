@@ -1,5 +1,5 @@
 """Figures for the README: held-out parity plots (GP) and the active-learning vs random curve.
-    python3 plots.py   ->  results/parity.png, results/active_learning.png
+    python3 plots.py   ->  results/parity.png, results/active_boundary_hard.png
 """
 import json
 
@@ -46,6 +46,23 @@ def active_curve():
     fig.savefig(OUT / "active_learning.png", dpi=150)
 
 
+def boundary_curve():
+    d = json.loads((OUT / "active_boundary_hard.json").read_text())
+    fig, ax = plt.subplots(figsize=(5.8, 3.7))
+    style = {"random": ("#555", "random"), "uncertainty": ("#2b6cb0", "most uncertain point"),
+             "boundary": ("#c05621", "nearest the 450 °C limit (straddle)")}
+    for rule, (colour, label) in style.items():
+        n = np.array(d[rule]["n_train"]); m = np.array(d[rule]["misclassified_mean"]); s = np.array(d[rule]["misclassified_sd"])
+        ax.plot(n, m, "o-", ms=3, color=colour, label=label)
+        ax.fill_between(n, m - s, m + s, color=colour, alpha=0.12)
+    ax.set_xlabel("FE solves used to train the GP")
+    ax.set_ylabel(f"wrong allowed/not-allowed calls (of {d['n_test']})")
+    ax.set_title("Hard test set: 50 designs near the copper limit, 10 seeds", fontsize=10)
+    ax.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(OUT / "active_boundary_hard.png", dpi=150)
+
+
 if __name__ == "__main__":
     parity()
-    active_curve()
+    boundary_curve()
