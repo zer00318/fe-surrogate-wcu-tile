@@ -45,7 +45,7 @@ On the random test set all three methods reach zero or near-zero misclassificati
 
 - Sampling where the GP is most likely to be on the wrong side of the limit reaches, with about 35–45 solves, the accuracy random sampling reaches with 90.
 - Sampling the most uncertain point is barely better than random: uncertainty is largest at the corners of the design box, not at the limit.
-- About 3–4 designs stay wrong whatever the method: they sit within a degree or two of 450 °C, where the GP's own error decides. A real workflow would send exactly those to a full FE solve.
+- About 3–4 designs stay wrong at 90 solves whatever the method. They sit within a few degrees of 450 °C, inside the GP's own error on this set (median 1.3 °C, max 8.5 °C); with all 240 training solves one remains wrong, at 451.7 °C. A real workflow would send designs that close to the limit to a full FE solve.
 - The boundary-focused GP is a worse general model (interface MAE 8.5 vs 4.4 °C for random at 90 solves on the random test set). It learned the question, not the whole field.
 
 ## What the stresses are, and are not
