@@ -4,6 +4,8 @@ A 2-D finite-element model of a water-cooled tungsten tile on a copper heat sink
 
 Everything is public and generic: textbook constants, a parametric geometry, open-source tools (scikit-fem, gmsh, scikit-learn). No data from any institute.
 
+**Try it:** [interactive explorer](https://zer00318.github.io/fe-surrogate-wcu-tile/) — pick the geometry and limits, read off which heat flux and cooling combinations are allowed (`docs/`, rebuilt by `explorer_grid.py`).
+
 ![Feasibility map](results/feasibility_map.png)
 
 **The engineering result.** For this flat tile (5 mm W, 10 mm Cu, one 3 mm cooling channel) the binding limit is the copper, not the tungsten: the W/Cu interface passes 450 °C, where CuCrZr starts to lose its strength, at about 8.5–11 MW/m² for coolant heat-transfer coefficients of 80–150 kW/m²K, well before the tungsten surface reaches recrystallisation. A long copper heat path is costly, which is one reason ITER-type divertors use monoblocks with only a thin copper layer between armour and coolant tube. In the full design space only 21 % of the 300 designs respect both limits.

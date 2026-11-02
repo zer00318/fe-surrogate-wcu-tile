@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Divertor Tile Explorer</title>
+<meta name="description" content="Which water-cooled tungsten-on-copper tile designs stay inside their material limits? A Gaussian-process surrogate of 350 finite-element solves.">
+<style>
+/* Layout: one column of controls above one large heat-flux x cooling map; the map is the page. */
+:root{
+  --bg:#f6f7f8; --panel:#ffffff; --ink:#15191d; --muted:#5d666f; --line:#d9dee3;
+  --ok:#2f8f5b; --near:#d39b1f; --cu:#c4462f; --w:#6b4bb3; --accent:#1f5f8b;
+  --font: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){ :root{ --bg:#111417; --panel:#1a1f24; --ink:#e7ebee; --muted:#9aa5ae; --line:#2c343b; --ok:#45b07a; --near:#e2b23f; --cu:#e2664f; --w:#9a7ce0; --accent:#6aa7d6; color-scheme: dark; } }
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--font);padding:24px max(16px,env(safe-area-inset-left)) 40px max(16px,env(safe-area-inset-right))}
+.wrap{max-width:1040px;margin:0 auto;display:grid;gap:18px}
+h1{font-size:26px;line-height:1.2;margin:0;font-weight:600;text-wrap:balance}
+.lede{margin:0;color:var(--muted);max-width:70ch}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
+label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+label b{color:var(--ink);font-family:var(--mono);font-weight:500}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.mapbox{position:relative;width:100%}
+canvas{width:100%;height:auto;display:block;border-radius:6px;touch-action:none}
+.axis{font-size:12px;color:var(--muted);font-family:var(--mono)}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.45;box-shadow:0 6px 18px rgba(0,0,0,.18);font-family:var(--mono);white-space:nowrap}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat{display:grid;gap:2px}
+.stat span{font-size:12px;color:var(--muted)}
+.stat b{font-size:22px;font-weight:500;font-family:var(--mono)}
+.notes{font-size:13px;color:var(--muted);margin:0;padding-left:18px;display:grid;gap:4px;max-width:80ch}
+a{color:var(--accent)}
+footer{font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:8px">
+    <h1>Which divertor tile designs stay inside their limits?</h1>
+    <p class="lede">A water-cooled tungsten tile on a copper heat sink, under steady heat flux. Pick the geometry, then read off which combinations of heat flux and coolant heat transfer are allowed. Each cell is a Gaussian-process prediction trained on 350 two-dimensional finite-element solves.</p>
+  </header>
+
+  <section class="card controls" aria-label="Design">
+    <label for="tw">Tungsten armour thickness <b id="tw_v">5 mm</b><input id="tw" type="range" min="0" max="6" step="1" value="3"></label>
+    <label for="tcu">Copper heat-sink thickness <b id="tcu_v">10 mm</b><input id="tcu" type="range" min="0" max="3" step="1" value="1"></label>
+    <label for="r">Cooling channel radius <b id="r_v">3 mm</b><input id="r" type="range" min="0" max="2" step="1" value="1"></label>
+    <label for="cu">Copper interface limit <b id="cu_v">450 °C</b><input id="cu" type="range" min="300" max="600" step="10" value="450"></label>
+    <label for="wl">Tungsten surface limit <b id="wl_v">1300 °C</b><input id="wl" type="range" min="900" max="2000" step="50" value="1300"></label>
+  </section>
+
+  <section class="card" style="display:grid;gap:10px">
+    <div class="legend">
+      <span><i style="background:var(--ok)"></i>Inside both limits</span>
+      <span><i style="background:var(--near)"></i>Within the surrogate's 2σ of the copper limit: run the full FE model</span>
+      <span><i style="background:var(--cu)"></i>Copper interface too hot</span>
+      <span><i style="background:var(--w)"></i>Tungsten surface too hot</span>
+    </div>
+    <div class="mapbox" id="mapbox">
+      <canvas id="map" width="960" height="560" aria-label="Feasibility map of heat flux against coolant heat transfer coefficient"></canvas>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><span>Max allowed heat flux at h = 100 kW/m²K</span><b id="s_qmax">—</b></div>
+      <div class="stat"><span>Allowed share of this map</span><b id="s_share">—</b></div>
+      <div class="stat"><span>Binding limit</span><b id="s_bind">—</b></div>
+    </div>
+  </section>
+
+  <section class="card" style="display:grid;gap:8px">
+    <strong>What this is, and what it is not</strong>
+    <ul class="notes">
+      <li>Model: 24 mm wide 2-D tile, steady conduction, constant conductivities (W 130, Cu 380 W/m·K), coolant at 100 °C. Hot designs are therefore optimistic for tungsten.</li>
+      <li>Limits are screening values (Cu interface 450 °C, where CuCrZr starts to lose strength; W surface 1300 °C, recrystallisation), not design-code allowables. Move them with the sliders.</li>
+      <li>The surrogate's mean error on held-out designs is about 1–2 °C; its nominal 95 % bands are slightly over-confident (87–88 % coverage), so amber cells mean "check with the real model".</li>
+      <li>Thermal only. The stress at the W/Cu joint, especially after cool-down from joining, is a separate and often harder limit.</li>
+    </ul>
+  </section>
+
+  <footer>Code, data and every check behind this page: <a href="https://github.com/zer00318/fe-surrogate-wcu-tile">github.com/zer00318/fe-surrogate-wcu-tile</a> · Built by Venkata Sai Pranav Regulagedda (KIT / Max Planck IPP). Generic textbook constants only; no institute data.</footer>
+</div>
+
+<script>
+const TW=[2,3,4,5,6,7,8], TCU=[8,10,12,14], RR=[2,3,4];
+let G=null;
+const $=id=>document.getElementById(id);
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+fetch('grid.json').then(r=>r.json()).then(g=>{G=g; draw();}).catch(()=>{ $('s_bind').textContent='data failed to load'; });
+
+function idx(it,ic,ir,ih,iq){ // grid order: tw, tcu, r, h, q
+  const nq=G.q.length, nh=G.h.length;
+  return ((((it*TCU.length+ic)*RR.length+ir)*nh+ih)*nq+iq);
+}
+function state(){
+  return {it:+$('tw').value, ic:+$('tcu').value, ir:+$('r').value, cu:+$('cu').value, wl:+$('wl').value};
+}
+function classify(s,ih,iq){
+  const k=idx(s.it,s.ic,s.ir,ih,iq);
+  const Ts=G.Ts[k], Ti=G.Ti[k], sd=G.Ti_sd[k];
+  let c='ok';
+  if(Ts>s.wl) c='w';
+  if(Ti>s.cu) c='cu';
+  if(c!=='w' && Math.abs(Ti-s.cu)<=2*Math.max(sd,1)) c='near';
+  return {c,Ts,Ti,sd};
+}
+const M={l:64,r:16,t:16,b:44};
+function draw(){
+  const s=state();
+  $('tw_v').textContent=TW[s.it]+' mm'; $('tcu_v').textContent=TCU[s.ic]+' mm'; $('r_v').textContent=RR[s.ir]+' mm';
+  $('cu_v').textContent=s.cu+' °C'; $('wl_v').textContent=s.wl+' °C';
+  if(!G) return;
+  const cv=$('map'), ctx=cv.getContext('2d'), W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const nq=G.q.length, nh=G.h.length, pw=(W-M.l-M.r)/nq, ph=(H-M.t-M.b)/nh;
+  const col={ok:css('--ok'),near:css('--near'),cu:css('--cu'),w:css('--w')};
+  let okN=0, cuBind=0, wBind=0;
+  for(let ih=0;ih<nh;ih++) for(let iq=0;iq<nq;iq++){
+    const r=classify(s,ih,iq); ctx.fillStyle=col[r.c];
+    ctx.fillRect(M.l+iq*pw, H-M.b-(ih+1)*ph, Math.ceil(pw), Math.ceil(ph));
+    if(r.c==='ok') okN++; if(r.c==='cu') cuBind++; if(r.c==='w') wBind++;
+  }
+  // axes
+  ctx.fillStyle=css('--muted'); ctx.font='13px '+css('--mono'); ctx.textAlign='center';
+  for(let q=5;q<=20;q+=2.5){ const x=M.l+(q-5)/(15)*(W-M.l-M.r); ctx.fillText(q, x, H-M.b+18); }
+  ctx.fillText('heat flux on the armour, MW/m²', M.l+(W-M.l-M.r)/2, H-6);
+  ctx.textAlign='right';
+  for(let h=20;h<=150;h+=20){ const y=H-M.b-(h-20)/130*(H-M.t-M.b); ctx.fillText(h, M.l-8, y+4); }
+  ctx.save(); ctx.translate(16,M.t+(H-M.t-M.b)/2); ctx.rotate(-Math.PI/2); ctx.textAlign='center'; ctx.fillText('coolant h, kW/m²K',0,0); ctx.restore();
+  // stats
+  const ih100=G.h.indexOf(100); let qmax=null;
+  for(let iq=0;iq<nq;iq++){ const r=classify(s,ih100,iq); if(r.c==='ok') qmax=G.q[iq]; }
+  $('s_qmax').textContent= qmax===null? 'none' : qmax.toFixed(1)+' MW/m²';
+  $('s_share').textContent= Math.round(100*okN/(nq*nh))+' %';
+  $('s_bind').textContent= cuBind===0 && wBind===0 ? 'none in range' : (cuBind>=wBind? 'copper interface' : 'tungsten surface');
+}
+['tw','tcu','r','cu','wl'].forEach(id=>$(id).addEventListener('input',draw));
+const cv=$('map'), tip=$('tip');
+cv.addEventListener('pointermove',e=>{
+  if(!G) return; const s=state(), rect=cv.getBoundingClientRect();
+  const x=(e.clientX-rect.left)*cv.width/rect.width, y=(e.clientY-rect.top)*cv.height/rect.height;
+  const nq=G.q.length, nh=G.h.length, pw=(cv.width-M.l-M.r)/nq, ph=(cv.height-M.t-M.b)/nh;
+  const iq=Math.floor((x-M.l)/pw), ih=Math.floor((cv.height-M.b-y)/ph);
+  if(iq<0||iq>=nq||ih<0||ih>=nh){ tip.hidden=true; return; }
+  const r=classify(s,ih,iq);
+  tip.innerHTML=`q ${G.q[iq].toFixed(1)} MW/m² · h ${G.h[ih]} kW/m²K<br>W surface ${r.Ts.toFixed(0)} °C<br>Cu interface ${r.Ti.toFixed(0)} ± ${(2*r.sd).toFixed(0)} °C`;
+  tip.hidden=false;
+  const bx=e.clientX-rect.left, by=e.clientY-rect.top, tw=tip.offsetWidth;
+  tip.style.left=Math.min(Math.max(0,bx+14), rect.width-tw)+'px'; tip.style.top=Math.max(0,by-60)+'px';
+});
+cv.addEventListener('pointerleave',()=>tip.hidden=true);
+</script>
+</body>
+</html>
